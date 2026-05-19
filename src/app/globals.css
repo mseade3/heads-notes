@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+:root {
+  --heads-bg: #030303;
+  --heads-surface: #0d0d0d;
+  --heads-surface-2: #141414;
+  --heads-border: #2a2a2a;
+  --heads-text: #f5f5f5;
+  --heads-muted: #b8b8b8;
+  --heads-gold: #d4af37;
+}
+
+* {
+  border-color: var(--heads-border);
+}
+
+body {
+  background:
+    radial-gradient(circle at 15% 15%, #1a1a1a, transparent 40%),
+    radial-gradient(circle at 90% 0%, #1f1b11, transparent 35%),
+    var(--heads-bg);
+  color: var(--heads-text);
+  font-family: var(--font-body), sans-serif;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading), serif;
+  letter-spacing: 0.015em;
+}
+
+.brand-title {
+  font-family: var(--font-brand), cursive;
+  color: #f7f7f7;
+  letter-spacing: 0.08em;
+  text-shadow: 0 2px 12px rgba(212, 175, 55, 0.18);
+}
+
+.brand-subtitle {
+  color: #d4af37;
+  letter-spacing: 0.22em;
+}
+
+.brand-crown {
+  width: 30px;
+  height: 22px;
+  display: inline-flex;
+}
+
+input,
+textarea,
+select {
+  background: var(--heads-surface-2);
+  color: var(--heads-text);
+  border: 1px solid var(--heads-border);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--heads-muted);
+}
+
+button {
+  transition: all 0.2s ease;
+}
+
+.heads-card {
+  border: 1px solid var(--heads-border);
+  background: linear-gradient(180deg, #111111, #0b0b0b);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.heads-topbar {
+  border: 1px solid #2b2b2b;
+  background: linear-gradient(180deg, #111111, #0d0d0d);
+}
+
+.heads-gold-btn {
+  background: linear-gradient(180deg, #e2bf56, #b78f2b);
+  color: #161616;
+  font-weight: 700;
+}
+
+.heads-gold-btn:hover {
+  filter: brightness(1.04);
+}
+
+.heads-outline-btn {
+  border: 1px solid #6e5a21;
+  background: #12100a;
+  color: #f5df9a;
+}
+
+.heads-outline-btn:hover {
+  background: #18130a;
+}
+
+.ProseMirror {
+  color: var(--heads-text);
+  font-family: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+
+.ProseMirror * {
+  font-family: inherit;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ProseMirror pre,
+.ProseMirror code {
+  font-family: inherit;
+  background: #1a1a1a;
+  color: #f0f0f0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.prose {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.prose pre,
+.prose code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
