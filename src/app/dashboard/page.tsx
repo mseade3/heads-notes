@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [notes, setNotes] = useState<MeetingNote[]>([]);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [meetingDate, setMeetingDate] = useState(
@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [draftFontFamily, setDraftFontFamily] = useState("Times New Roman");
   const [error, setError] = useState<string | null>(null);
+  const [confirmDeleteMeeting, setConfirmDeleteMeeting] = useState<MeetingNote | null>(null);
 
   const filteredNotes = useMemo(
     () => notes.filter((note) => note.status === activeTab),
@@ -188,9 +189,9 @@ export default function DashboardPage() {
     }
   };
 
-  const deleteDraft = async (meeting: MeetingNote) => {
+  const deleteNote = async (meeting: MeetingNote) => {
     setError(null);
-    setDeletingDraftId(meeting.id);
+    setDeletingNoteId(meeting.id);
 
     try {
       const response = await fetch(`/api/meetings/${meeting.id}`, {
@@ -199,7 +200,7 @@ export default function DashboardPage() {
 
       if (!response.ok) {
         const body = (await response.json()) as { error?: string };
-        throw new Error(body.error ?? "Unable to delete draft.");
+        throw new Error(body.error ?? "Unable to delete meeting note.");
       }
 
       setNotes((current) => current.filter((note) => note.id !== meeting.id));
@@ -209,11 +210,22 @@ export default function DashboardPage() {
       await fetchNotes();
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? deleteError.message : "Unable to delete draft."
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete meeting note."
       );
     } finally {
-      setDeletingDraftId(null);
+      setDeletingNoteId(null);
     }
+  };
+
+  const requestDeleteNote = async (meeting: MeetingNote) => {
+    if (meeting.status === "published") {
+      setConfirmDeleteMeeting(meeting);
+      return;
+    }
+
+    await deleteNote(meeting);
   };
 
   const handleSignOut = async () => {
@@ -432,20 +444,16 @@ export default function DashboardPage() {
                           meeting={meeting}
                           isSelected={selectedMeeting?.id === meeting.id}
                           onSelect={(selected) => setSelectedMeetingId(selected.id)}
-                          onEdit={
-                            meeting.status === "draft"
-                              ? (selectedMeetingData) => {
-                                  setMeetingDate(selectedMeetingData.meeting_date);
-                                  setDraftFontFamily("Times New Roman");
-                                  setDraft({
-                                    id: selectedMeetingData.id,
-                                    title: selectedMeetingData.title,
-                                    content: selectedMeetingData.content,
-                                    rawTranscript: selectedMeetingData.raw_transcript ?? ""
-                                  });
-                                }
-                              : undefined
-                          }
+                          onEdit={(selectedMeetingData) => {
+                            setMeetingDate(selectedMeetingData.meeting_date);
+                            setDraftFontFamily("Times New Roman");
+                            setDraft({
+                              id: selectedMeetingData.id,
+                              title: selectedMeetingData.title,
+                              content: selectedMeetingData.content,
+                              rawTranscript: selectedMeetingData.raw_transcript ?? ""
+                            });
+                          }}
                           onPublish={
                             meeting.status === "draft"
                               ? (selectedMeetingData) => {
@@ -453,14 +461,10 @@ export default function DashboardPage() {
                                 }
                               : undefined
                           }
-                          onDeleteDraft={
-                            meeting.status === "draft"
-                              ? async (selectedMeetingData) => {
-                                  await deleteDraft(selectedMeetingData);
-                                }
-                              : undefined
-                          }
-                          isDeletingDraft={deletingDraftId === meeting.id}
+                          onDeleteNote={async (selectedMeetingData) => {
+                            await requestDeleteNote(selectedMeetingData);
+                          }}
+                          isDeletingNote={deletingNoteId === meeting.id}
                         />
                       ))}
                     </div>
@@ -504,6 +508,45 @@ export default function DashboardPage() {
             </section>
           </section>
         </div>
+
+        {confirmDeleteMeeting ? (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="heads-glass-card w-full max-w-md rounded-3xl border border-white/15 p-6">
+              <h3 className="text-xl font-semibold tracking-tight text-[#f5f7fc]">
+                Delete approved note?
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-[#b0b6c3]">
+                This will permanently remove{" "}
+                <span className="font-semibold text-[#e6e9f2]">
+                  {confirmDeleteMeeting.title}
+                </span>{" "}
+                from the library. This action cannot be undone.
+              </p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteMeeting(null)}
+                  className="heads-outline-btn rounded-2xl px-4 py-2 text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const target = confirmDeleteMeeting;
+                    setConfirmDeleteMeeting(null);
+                    if (target) {
+                      await deleteNote(target);
+                    }
+                  }}
+                  className="rounded-2xl border border-[#7b3a3a] bg-[#2a1515] px-4 py-2 text-sm font-semibold text-[#f5c2c2] hover:bg-[#341d1d]"
+                >
+                  Delete Approved Note
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
     </Preloader>
   );

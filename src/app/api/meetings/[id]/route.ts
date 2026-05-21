@@ -39,7 +39,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     const { data: existingMeeting, error: existingError } = await auth.supabase
       .from("meeting_notes")
-      .select("id, status")
+      .select("id")
       .eq("id", id)
       .maybeSingle();
 
@@ -49,20 +49,15 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     if (!existingMeeting) {
       return NextResponse.json(
-        { error: "Draft not found or you do not have permission to delete it." },
+        { error: "Meeting note not found or you do not have permission to delete it." },
         { status: 404 }
       );
-    }
-
-    if (existingMeeting.status !== "draft") {
-      return NextResponse.json({ error: "Only draft notes can be deleted." }, { status: 400 });
     }
 
     const { data: deletedRows, error: deleteError } = await deleteClient
       .from("meeting_notes")
       .delete()
       .eq("id", id)
-      .eq("status", "draft")
       .select("id");
 
     if (deleteError) {
@@ -71,7 +66,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     if (!deletedRows || deletedRows.length === 0) {
       return NextResponse.json(
-        { error: "Draft not found or you do not have permission to delete it." },
+        { error: "Meeting note not found or you do not have permission to delete it." },
         { status: 404 }
       );
     }
@@ -81,7 +76,9 @@ export async function DELETE(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Unexpected error while deleting draft."
+          error instanceof Error
+            ? error.message
+            : "Unexpected error while deleting meeting note."
       },
       { status: 500 }
     );

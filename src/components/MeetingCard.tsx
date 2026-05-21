@@ -6,8 +6,8 @@ type MeetingCardProps = {
   onSelect?: (meeting: MeetingNote) => void;
   onEdit?: (meeting: MeetingNote) => void;
   onPublish?: (meeting: MeetingNote) => void;
-  onDeleteDraft?: (meeting: MeetingNote) => void;
-  isDeletingDraft?: boolean;
+  onDeleteNote?: (meeting: MeetingNote) => void;
+  isDeletingNote?: boolean;
 };
 
 const stripHtml = (value: string) =>
@@ -40,8 +40,8 @@ export function MeetingCard({
   onSelect,
   onEdit,
   onPublish,
-  onDeleteDraft,
-  isDeletingDraft = false
+  onDeleteNote,
+  isDeletingNote = false
 }: MeetingCardProps) {
   const handleExport = (format: "txt" | "docx" | "pdf") => {
     window.open(`/api/meetings/${meeting.id}/export?format=${format}`, "_blank");
@@ -115,7 +115,7 @@ export function MeetingCard({
             onClick={() => onEdit(meeting)}
             className="heads-outline-btn rounded-full px-3 py-1 text-xs font-medium"
           >
-            Edit Draft
+            {meeting.status === "published" ? "Override Approved" : "Edit Draft"}
           </button>
         ) : null}
         {onPublish ? (
@@ -127,14 +127,14 @@ export function MeetingCard({
             Publish
           </button>
         ) : null}
-        {onDeleteDraft ? (
+        {onDeleteNote ? (
           <button
             type="button"
-            onClick={() => onDeleteDraft(meeting)}
-            disabled={isDeletingDraft}
+            onClick={() => onDeleteNote(meeting)}
+            disabled={isDeletingNote}
             className="rounded-full border border-[#7b3a3a] bg-[#2a1515] px-3 py-1 text-xs font-medium text-[#f0b5b5] hover:bg-[#341c1c] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isDeletingDraft ? "Deleting..." : "Delete Draft"}
+            {isDeletingNote ? "Deleting..." : "Delete Note"}
           </button>
         ) : null}
       </div>

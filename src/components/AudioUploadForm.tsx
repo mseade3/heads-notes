@@ -3,8 +3,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import Image from "next/image";
 
-const OPENAI_STANDARD_AUDIO_LIMIT_BYTES = 25 * 1024 * 1024;
-
 const PROCESSING_STAGES = [
   "uploading",
   "transcribing",
@@ -12,7 +10,7 @@ const PROCESSING_STAGES = [
   "saving"
 ] as const;
 
-type ProcessingStage = (typeof PROCESSING_STAGES)[number] | "idle" | "compressing";
+type ProcessingStage = (typeof PROCESSING_STAGES)[number] | "idle";
 
 type UploadResult = {
   formattedNotes: string;
@@ -32,109 +30,17 @@ const stageLabels: Record<Exclude<ProcessingStage, "idle" | "compressing">, stri
   saving: "Saving draft..."
 };
 
-const stageOrder: ProcessingStage[] = [
-  "compressing",
-  "uploading",
-  "transcribing",
-  "structuring",
-  "saving"
-];
+const stageOrder: ProcessingStage[] = ["uploading", "transcribing", "structuring", "saving"];
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
 
-const encodeMonoWav = (buffer: AudioBuffer): Blob => {
-  const channel = buffer.getChannelData(0);
-  const dataLength = channel.length * 2;
-  const outputBuffer = new ArrayBuffer(44 + dataLength);
-  const view = new DataView(outputBuffer);
-
-  const writeString = (offset: number, value: string) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset + index, value.charCodeAt(index));
-    }
-  };
-
-  writeString(0, "RIFF");
-  view.setUint32(4, 36 + dataLength, true);
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, buffer.sampleRate, true);
-  view.setUint32(28, buffer.sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeString(36, "data");
-  view.setUint32(40, dataLength, true);
-
-  let offset = 44;
-  for (let index = 0; index < channel.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, channel[index]));
-    const pcmSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-    view.setInt16(offset, pcmSample, true);
-    offset += 2;
-  }
-
-  return new Blob([outputBuffer], { type: "audio/wav" });
-};
-
-const createCompressedAudioFile = async (inputFile: File) => {
-  const AudioContextClass =
-    window.AudioContext ||
-    ((window as Window & { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext as typeof AudioContext | undefined);
-  if (!AudioContextClass) {
-    throw new Error("Browser audio compression is not supported in this environment.");
-  }
-
-  const context = new AudioContextClass();
-
-  try {
-    const arrayBuffer = await inputFile.arrayBuffer();
-    const decoded = await context.decodeAudioData(arrayBuffer.slice(0));
-    const sampleRateCandidates = [16000, 12000, 8000];
-
-    for (const sampleRate of sampleRateCandidates) {
-      const frameCount = Math.ceil(decoded.duration * sampleRate);
-      const offlineContext = new OfflineAudioContext(1, frameCount, sampleRate);
-      const source = offlineContext.createBufferSource();
-      source.buffer = decoded;
-      source.connect(offlineContext.destination);
-      source.start(0);
-
-      const rendered = await offlineContext.startRendering();
-      const wavBlob = encodeMonoWav(rendered);
-      const compressedFile = new File(
-        [wavBlob],
-        `${inputFile.name.replace(/\.[^/.]+$/, "") || "meeting-audio"}-compressed.wav`,
-        {
-          type: "audio/wav",
-          lastModified: Date.now()
-        }
-      );
-
-      if (compressedFile.size <= OPENAI_STANDARD_AUDIO_LIMIT_BYTES) {
-        return compressedFile;
-      }
-    }
-
-    throw new Error(
-      "Audio is still above 25MB after compression. Try a shorter clip."
-    );
-  } finally {
-    await context.close();
-  }
-};
-
 export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStage, setProcessingStage] = useState<ProcessingStage>("idle");
-  const [compressionNotice, setCompressionNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeStageIndex = useMemo(
     () => stageOrder.indexOf(processingStage),
@@ -148,7 +54,6 @@ export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    setCompressionNotice(null);
 
     if (!audioFile) {
       setError("Please choose an audio file first.");
@@ -157,19 +62,10 @@ export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps
 
     try {
       setIsProcessing(true);
-      let fileForUpload = audioFile;
-
-      if (audioFile.size > OPENAI_STANDARD_AUDIO_LIMIT_BYTES) {
-        setCompressionNotice(
-          "File is over 25MB limit. Attempting auto-compression to avoid server errors..."
-        );
-        setProcessingStage("compressing");
-        fileForUpload = await createCompressedAudioFile(audioFile);
-      }
 
       const payload = new FormData();
       setProcessingStage("uploading");
-      payload.append("audio", fileForUpload);
+      payload.append("audio", audioFile);
       payload.append("meetingDate", meetingDate);
 
       const responsePromise = fetch("/api/meetings/upload", {
@@ -230,12 +126,6 @@ export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps
         />
       </div>
 
-      {compressionNotice ? (
-        <p className="rounded-md border border-[#6f5a22] bg-[#1a1409] px-3 py-2 text-xs text-[#f1d788]">
-          {compressionNotice}
-        </p>
-      ) : null}
-
       <button
         type="submit"
         disabled={isProcessing}
@@ -268,12 +158,6 @@ export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps
             </div>
 
             <div className="space-y-2.5">
-              {processingStage === "compressing" ? (
-                <p className="text-xs text-[#f1d788] opacity-100 transition-opacity duration-500">
-                  File is over 25MB limit. Attempting auto-compression to avoid server
-                  errors...
-                </p>
-              ) : null}
               {PROCESSING_STAGES.map((stage) => {
                 const stageIndex = stageOrder.indexOf(stage);
                 const isDone = activeStageIndex > stageIndex;
