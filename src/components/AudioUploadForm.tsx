@@ -41,8 +41,9 @@ const sleep = (ms: number) =>
     window.setTimeout(resolve, ms);
   });
 
-const CLIENT_DIRECT_UPLOAD_LIMIT_BYTES = 8 * 1024 * 1024;
-const CLIENT_CHUNK_SECONDS = 240;
+const CLIENT_DIRECT_UPLOAD_LIMIT_BYTES = 3 * 1024 * 1024;
+const CLIENT_CHUNK_SECONDS = 60;
+const MAX_CHUNK_UPLOAD_BYTES = 3 * 1024 * 1024;
 
 const getUploadErrorMessage = async (response: Response) => {
   const contentType = response.headers.get("content-type") ?? "";
@@ -135,12 +136,22 @@ const createClientAudioChunks = async (inputFile: File) => {
       const end = Math.min(start + samplesPerChunk, monoSamples.length);
       const segment = monoSamples.slice(start, end);
       const wavBlob = encodeMonoWav(segment, targetSampleRate);
-      chunks.push(
-        new File([wavBlob], `chunk-${String(chunks.length + 1).padStart(3, "0")}.wav`, {
+      const chunkFile = new File(
+        [wavBlob],
+        `chunk-${String(chunks.length + 1).padStart(3, "0")}.wav`,
+        {
           type: "audio/wav",
           lastModified: Date.now()
-        })
+        }
       );
+
+      if (chunkFile.size > MAX_CHUNK_UPLOAD_BYTES) {
+        throw new Error(
+          "Chunk upload size exceeded safe Vercel limits. Please export audio at lower quality."
+        );
+      }
+
+      chunks.push(chunkFile);
     }
 
     if (chunks.length === 0) {
