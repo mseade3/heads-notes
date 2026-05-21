@@ -80,18 +80,27 @@ export async function POST(request: NextRequest) {
 
       const chunkTranscripts: string[] = [];
       for (const [index, chunkPath] of chunkPaths.entries()) {
-        const chunkTranscription = await openai.audio.transcriptions.create({
-          file: createReadStream(chunkPath),
-          model: "whisper-1"
-        });
+        let chunkTranscription;
+        try {
+          chunkTranscription = await openai.audio.transcriptions.create({
+            file: createReadStream(chunkPath),
+            model: "whisper-1"
+          });
+        } catch (chunkError) {
+          throw new Error(
+            `Transcription failed on chunk ${index + 1} of ${chunkPaths.length}: ${
+              chunkError instanceof Error ? chunkError.message : "Unknown chunk error."
+            }`
+          );
+        }
 
         const chunkText = chunkTranscription.text?.trim();
         if (chunkText) {
-          chunkTranscripts.push(`[Chunk ${index + 1}]\n${chunkText}`);
+          chunkTranscripts.push(chunkText);
         }
       }
 
-      rawTranscript = chunkTranscripts.join("\n\n").trim();
+      rawTranscript = chunkTranscripts.join(" ").replace(/\s+/g, " ").trim();
     }
 
     if (!rawTranscript) {

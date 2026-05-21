@@ -4,7 +4,8 @@ import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const OPENAI_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const OPENAI_MAX_AUDIO_BYTES = 24 * 1024 * 1024;
+const TRANSCRIPTION_SEGMENT_SECONDS = 600;
 
 const runFfmpeg = (args: string[]) =>
   new Promise<void>((resolve, reject) => {
@@ -14,7 +15,7 @@ const runFfmpeg = (args: string[]) =>
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         reject(
           new Error(
-            "ffmpeg is not installed on the server. Install ffmpeg to process files larger than 25MB."
+            "ffmpeg is not installed on the server. Install ffmpeg to process files larger than 24MB."
           )
         );
         return;
@@ -39,62 +40,67 @@ export const createTranscriptionChunks = async (audio: File) => {
   const compressedPath = path.join(workdir, "compressed.mp3");
   const chunkPattern = path.join(workdir, "chunk-%03d.mp3");
 
-  const inputBuffer = Buffer.from(await audio.arrayBuffer());
-  await writeFile(inputPath, inputBuffer);
+  try {
+    const inputBuffer = Buffer.from(await audio.arrayBuffer());
+    await writeFile(inputPath, inputBuffer);
 
-  // Compress to a predictable low bitrate first.
-  await runFfmpeg([
-    "-y",
-    "-i",
-    inputPath,
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    "16000",
-    "-b:a",
-    "32k",
-    compressedPath
-  ]);
+    // Compress first so 30-50MB uploads can usually fit inside Whisper limits.
+    await runFfmpeg([
+      "-y",
+      "-i",
+      inputPath,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-b:a",
+      "32k",
+      compressedPath
+    ]);
 
-  const compressedStats = await stat(compressedPath);
-  if (compressedStats.size <= OPENAI_MAX_AUDIO_BYTES) {
+    const compressedStats = await stat(compressedPath);
+    if (compressedStats.size <= OPENAI_MAX_AUDIO_BYTES) {
+      return {
+        chunkPaths: [compressedPath],
+        cleanup: async () => {
+          await rm(workdir, { recursive: true, force: true });
+        }
+      };
+    }
+
+    // Split compressed audio into 10-minute chunks for safer Whisper payload sizing.
+    await runFfmpeg([
+      "-y",
+      "-i",
+      compressedPath,
+      "-f",
+      "segment",
+      "-segment_time",
+      String(TRANSCRIPTION_SEGMENT_SECONDS),
+      "-c",
+      "copy",
+      chunkPattern
+    ]);
+
+    const entries = await readdir(workdir);
+    const chunkPaths = entries
+      .filter((entry) => /^chunk-\d{3}\.mp3$/.test(entry))
+      .sort()
+      .map((entry) => path.join(workdir, entry));
+
+    if (chunkPaths.length === 0) {
+      throw new Error("Unable to chunk large audio file for transcription.");
+    }
+
     return {
-      chunkPaths: [compressedPath],
+      chunkPaths,
       cleanup: async () => {
         await rm(workdir, { recursive: true, force: true });
       }
     };
+  } catch (error) {
+    await rm(workdir, { recursive: true, force: true });
+    throw error;
   }
-
-  // Split compressed audio into 15-minute chunks.
-  await runFfmpeg([
-    "-y",
-    "-i",
-    compressedPath,
-    "-f",
-    "segment",
-    "-segment_time",
-    "900",
-    "-c",
-    "copy",
-    chunkPattern
-  ]);
-
-  const entries = await readdir(workdir);
-  const chunkPaths = entries
-    .filter((entry) => /^chunk-\d{3}\.mp3$/.test(entry))
-    .sort()
-    .map((entry) => path.join(workdir, entry));
-
-  if (chunkPaths.length === 0) {
-    throw new Error("Unable to chunk large audio file for transcription.");
-  }
-
-  return {
-    chunkPaths,
-    cleanup: async () => {
-      await rm(workdir, { recursive: true, force: true });
-    }
-  };
 };
