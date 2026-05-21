@@ -18,6 +18,10 @@ type UploadResult = {
   inferredTitle: string;
 };
 
+type ChunkTranscriptionResult = {
+  text: string;
+};
+
 type AudioUploadFormProps = {
   meetingDate: string;
   onSuccess: (result: UploadResult) => Promise<void> | void;
@@ -36,6 +40,9 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
+
+const CLIENT_DIRECT_UPLOAD_LIMIT_BYTES = 8 * 1024 * 1024;
+const CLIENT_CHUNK_SECONDS = 240;
 
 const getUploadErrorMessage = async (response: Response) => {
   const contentType = response.headers.get("content-type") ?? "";
@@ -59,6 +66,91 @@ const getUploadErrorMessage = async (response: Response) => {
   }
 
   return `Request failed (${response.status}).`;
+};
+
+const encodeMonoWav = (samples: Float32Array, sampleRate: number): Blob => {
+  const dataLength = samples.length * 2;
+  const outputBuffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(outputBuffer);
+
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataLength, true);
+
+  let offset = 44;
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index]));
+    const pcmSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    view.setInt16(offset, pcmSample, true);
+    offset += 2;
+  }
+
+  return new Blob([outputBuffer], { type: "audio/wav" });
+};
+
+const createClientAudioChunks = async (inputFile: File) => {
+  const AudioContextClass =
+    window.AudioContext ||
+    ((window as Window & { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext as typeof AudioContext | undefined);
+
+  if (!AudioContextClass) {
+    throw new Error("Browser audio decoding is unavailable for large-file fallback.");
+  }
+
+  const context = new AudioContextClass();
+
+  try {
+    const decoded = await context.decodeAudioData(await inputFile.arrayBuffer());
+    const targetSampleRate = 16000;
+    const frameCount = Math.ceil(decoded.duration * targetSampleRate);
+    const offlineContext = new OfflineAudioContext(1, frameCount, targetSampleRate);
+    const source = offlineContext.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offlineContext.destination);
+    source.start(0);
+    const rendered = await offlineContext.startRendering();
+
+    const monoSamples = rendered.getChannelData(0);
+    const samplesPerChunk = targetSampleRate * CLIENT_CHUNK_SECONDS;
+    const chunks: File[] = [];
+
+    for (let start = 0; start < monoSamples.length; start += samplesPerChunk) {
+      const end = Math.min(start + samplesPerChunk, monoSamples.length);
+      const segment = monoSamples.slice(start, end);
+      const wavBlob = encodeMonoWav(segment, targetSampleRate);
+      chunks.push(
+        new File([wavBlob], `chunk-${String(chunks.length + 1).padStart(3, "0")}.wav`, {
+          type: "audio/wav",
+          lastModified: Date.now()
+        })
+      );
+    }
+
+    if (chunks.length === 0) {
+      throw new Error("Unable to split audio into uploadable chunks.");
+    }
+
+    return chunks;
+  } finally {
+    await context.close();
+  }
 };
 
 export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps) {
@@ -86,26 +178,72 @@ export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps
 
     try {
       setIsProcessing(true);
+      let data: UploadResult;
 
-      const payload = new FormData();
-      setProcessingStage("uploading");
-      payload.append("audio", audioFile);
-      payload.append("meetingDate", meetingDate);
+      if (audioFile.size > CLIENT_DIRECT_UPLOAD_LIMIT_BYTES) {
+        setProcessingStage("uploading");
+        const chunks = await createClientAudioChunks(audioFile);
+        const chunkTranscripts: string[] = [];
 
-      const responsePromise = fetch("/api/meetings/upload", {
-        method: "POST",
-        body: payload
-      });
-      setProcessingStage("transcribing");
+        for (const chunk of chunks) {
+          const chunkPayload = new FormData();
+          chunkPayload.append("audio", chunk);
+          setProcessingStage("transcribing");
+          const chunkResponse = await fetch("/api/meetings/transcribe-chunk", {
+            method: "POST",
+            body: chunkPayload
+          });
 
-      const response = await responsePromise;
+          if (!chunkResponse.ok) {
+            throw new Error(await getUploadErrorMessage(chunkResponse));
+          }
 
-      if (!response.ok) {
-        throw new Error(await getUploadErrorMessage(response));
+          const chunkBody = (await chunkResponse.json()) as ChunkTranscriptionResult;
+          if (chunkBody.text?.trim()) {
+            chunkTranscripts.push(chunkBody.text.trim());
+          }
+        }
+
+        const finalTranscript = chunkTranscripts.join(" ").replace(/\s+/g, " ").trim();
+        if (!finalTranscript) {
+          throw new Error("No transcript text was generated from the uploaded audio.");
+        }
+
+        const formatPayload = new FormData();
+        formatPayload.append("meetingDate", meetingDate);
+        formatPayload.append("transcript", finalTranscript);
+        setProcessingStage("structuring");
+
+        const formatResponse = await fetch("/api/meetings/upload", {
+          method: "POST",
+          body: formatPayload
+        });
+        if (!formatResponse.ok) {
+          throw new Error(await getUploadErrorMessage(formatResponse));
+        }
+        data = (await formatResponse.json()) as UploadResult;
+      } else {
+        const payload = new FormData();
+        setProcessingStage("uploading");
+        payload.append("audio", audioFile);
+        payload.append("meetingDate", meetingDate);
+
+        const responsePromise = fetch("/api/meetings/upload", {
+          method: "POST",
+          body: payload
+        });
+        setProcessingStage("transcribing");
+
+        const response = await responsePromise;
+
+        if (!response.ok) {
+          throw new Error(await getUploadErrorMessage(response));
+        }
+
+        setProcessingStage("structuring");
+        data = (await response.json()) as UploadResult;
       }
 
-      setProcessingStage("structuring");
-      const data = (await response.json()) as UploadResult;
       await sleep(250);
 
       setProcessingStage("saving");

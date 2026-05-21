@@ -58,49 +58,57 @@ export async function POST(request: NextRequest) {
     }
 
     const audio = formData.get("audio");
+    const transcript = String(formData.get("transcript") ?? "").trim();
     const meetingDate = String(formData.get("meetingDate") ?? "");
 
-    if (!(audio instanceof File)) {
-      return NextResponse.json({ error: "Audio file is required." }, { status: 400 });
+    if (!(audio instanceof File) && !transcript) {
+      return NextResponse.json(
+        { error: "Audio file or transcript is required." },
+        { status: 400 }
+      );
     }
 
     const openai = getOpenAIClient();
 
     let rawTranscript = "";
 
-    if (audio.size <= getOpenAiMaxAudioBytes()) {
-      const transcription = await openai.audio.transcriptions.create({
-        file: audio,
-        model: "whisper-1"
-      });
-      rawTranscript = transcription.text?.trim() ?? "";
-    } else {
-      const { chunkPaths, cleanup } = await createTranscriptionChunks(audio);
-      cleanupChunks = cleanup;
+    if (transcript) {
+      rawTranscript = transcript;
+    } else if (audio instanceof File) {
+      if (audio.size <= getOpenAiMaxAudioBytes()) {
+        const transcription = await openai.audio.transcriptions.create({
+          file: audio,
+          model: "whisper-1"
+        });
+        rawTranscript = transcription.text?.trim() ?? "";
+      } else {
+        const { chunkPaths, cleanup } = await createTranscriptionChunks(audio);
+        cleanupChunks = cleanup;
 
-      const chunkTranscripts: string[] = [];
-      for (const [index, chunkPath] of chunkPaths.entries()) {
-        let chunkTranscription;
-        try {
-          chunkTranscription = await openai.audio.transcriptions.create({
-            file: createReadStream(chunkPath),
-            model: "whisper-1"
-          });
-        } catch (chunkError) {
-          throw new Error(
-            `Transcription failed on chunk ${index + 1} of ${chunkPaths.length}: ${
-              chunkError instanceof Error ? chunkError.message : "Unknown chunk error."
-            }`
-          );
+        const chunkTranscripts: string[] = [];
+        for (const [index, chunkPath] of chunkPaths.entries()) {
+          let chunkTranscription;
+          try {
+            chunkTranscription = await openai.audio.transcriptions.create({
+              file: createReadStream(chunkPath),
+              model: "whisper-1"
+            });
+          } catch (chunkError) {
+            throw new Error(
+              `Transcription failed on chunk ${index + 1} of ${chunkPaths.length}: ${
+                chunkError instanceof Error ? chunkError.message : "Unknown chunk error."
+              }`
+            );
+          }
+
+          const chunkText = chunkTranscription.text?.trim();
+          if (chunkText) {
+            chunkTranscripts.push(chunkText);
+          }
         }
 
-        const chunkText = chunkTranscription.text?.trim();
-        if (chunkText) {
-          chunkTranscripts.push(chunkText);
-        }
+        rawTranscript = chunkTranscripts.join(" ").replace(/\s+/g, " ").trim();
       }
-
-      rawTranscript = chunkTranscripts.join(" ").replace(/\s+/g, " ").trim();
     }
 
     if (!rawTranscript) {
