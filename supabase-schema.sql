@@ -43,3 +43,10 @@ on public.meeting_notes
 for update
 using (auth.uid() = created_by)
 with check (auth.uid() = created_by);
+
+drop policy if exists "core members can delete own draft notes" on public.meeting_notes;
+drop policy if exists "core members can delete draft notes" on public.meeting_notes;
+create policy "core members can delete draft notes"
+on public.meeting_notes
+for delete
+using (auth.role() = 'authenticated' and status = 'draft');

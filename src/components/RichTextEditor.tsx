@@ -49,7 +49,7 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class:
-          "min-h-[280px] rounded-lg border border-[#3a3a3a] bg-[#111111] px-4 py-3 outline-none text-[#f0f0f0]"
+          "executive-editor min-h-[320px] rounded-3xl border border-white/10 bg-[#121212]/90 px-6 py-5 outline-none text-[#eef1f7]"
       }
     },
     onUpdate: ({ editor: nextEditor }) => {
@@ -68,7 +68,7 @@ export function RichTextEditor({
 
   if (!editor) {
     return (
-      <div className="rounded-lg border border-[#3a3a3a] bg-[#111111] px-4 py-3 text-sm text-[#bdbdbd]">
+      <div className="rounded-3xl border border-white/10 bg-[#121212]/90 px-4 py-3 text-sm text-[#bdbdbd]">
         Loading editor...
       </div>
     );
@@ -77,11 +77,13 @@ export function RichTextEditor({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-xs font-medium text-[#d6d6d6]">Font</label>
+        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b4bac7]">
+          Font
+        </label>
         <select
           value={fontFamily}
           onChange={(event) => onFontFamilyChange(event.target.value)}
-          className="max-h-32 rounded-md border border-[#6e5a21] bg-[#141109] px-3 py-1 text-sm text-[#f5df9a]"
+          className="max-h-32 rounded-2xl border border-white/12 bg-[#1b1b1b]/90 px-3 py-2 text-sm text-[#eceff6]"
         >
           {FONT_OPTIONS.map((font) => (
             <option key={font} value={font}>
@@ -92,21 +94,21 @@ export function RichTextEditor({
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBold().run()}
-          className="heads-outline-btn rounded-md px-3 py-1 text-sm font-medium"
+          className="heads-outline-btn rounded-xl px-3 py-1.5 text-sm font-medium"
         >
           Bold
         </button>
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          className="heads-outline-btn rounded-md px-3 py-1 text-sm font-medium"
+          className="heads-outline-btn rounded-xl px-3 py-1.5 text-sm font-medium"
         >
           Italic
         </button>
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-          className="heads-outline-btn rounded-md px-3 py-1 text-sm font-medium"
+          className="heads-outline-btn rounded-xl px-3 py-1.5 text-sm font-medium"
         >
           Bullets
         </button>
