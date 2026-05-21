@@ -37,6 +37,30 @@ const sleep = (ms: number) =>
     window.setTimeout(resolve, ms);
   });
 
+const getUploadErrorMessage = async (response: Response) => {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const body = (await response.json()) as { error?: string };
+      return body.error ?? `Request failed (${response.status}).`;
+    } catch {
+      return `Request failed (${response.status}).`;
+    }
+  }
+
+  const rawText = (await response.text()).trim();
+  if (/request entity too large/i.test(rawText)) {
+    return "Upload request is too large before processing. Please try a smaller file or lower bitrate export.";
+  }
+
+  if (rawText) {
+    return rawText;
+  }
+
+  return `Request failed (${response.status}).`;
+};
+
 export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -77,8 +101,7 @@ export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps
       const response = await responsePromise;
 
       if (!response.ok) {
-        const body = (await response.json()) as { error?: string };
-        throw new Error(body.error ?? "Failed to process audio.");
+        throw new Error(await getUploadErrorMessage(response));
       }
 
       setProcessingStage("structuring");

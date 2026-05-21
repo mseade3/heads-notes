@@ -39,7 +39,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     const { data: existingMeeting, error: existingError } = await auth.supabase
       .from("meeting_notes")
-      .select("id")
+      .select("id, status, created_by")
       .eq("id", id)
       .maybeSingle();
 
@@ -54,19 +54,62 @@ export async function DELETE(request: Request, context: RouteContext) {
       );
     }
 
-    const { data: deletedRows, error: deleteError } = await deleteClient
-      .from("meeting_notes")
-      .delete()
-      .eq("id", id)
-      .select("id");
+    let deletedRows: Array<{ id: string }> | null = null;
 
-    if (deleteError) {
-      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    if (adminSupabase) {
+      const { data, error: deleteError } = await deleteClient
+        .from("meeting_notes")
+        .delete()
+        .eq("id", id)
+        .select("id");
+
+      if (deleteError) {
+        return NextResponse.json({ error: deleteError.message }, { status: 500 });
+      }
+      deletedRows = data;
+    } else {
+      const { data, error: deleteError } = await auth.supabase
+        .from("meeting_notes")
+        .delete()
+        .eq("id", id)
+        .select("id");
+
+      if (deleteError) {
+        return NextResponse.json({ error: deleteError.message }, { status: 500 });
+      }
+      deletedRows = data;
+
+      if ((!deletedRows || deletedRows.length === 0) && existingMeeting.status === "published") {
+        // Fallback for stricter legacy RLS: owners can downgrade published to draft, then delete.
+        const { error: updateError } = await auth.supabase
+          .from("meeting_notes")
+          .update({ status: "draft" })
+          .eq("id", id)
+          .eq("created_by", auth.user.id);
+
+        if (!updateError) {
+          const { data: retryDeleteRows, error: retryDeleteError } = await auth.supabase
+            .from("meeting_notes")
+            .delete()
+            .eq("id", id)
+            .eq("created_by", auth.user.id)
+            .eq("status", "draft")
+            .select("id");
+
+          if (retryDeleteError) {
+            return NextResponse.json({ error: retryDeleteError.message }, { status: 500 });
+          }
+          deletedRows = retryDeleteRows;
+        }
+      }
     }
 
     if (!deletedRows || deletedRows.length === 0) {
       return NextResponse.json(
-        { error: "Meeting note not found or you do not have permission to delete it." },
+        {
+          error:
+            "Meeting note not deleted. If this is an approved note, apply the latest delete policy migration in Supabase."
+        },
         { status: 404 }
       );
     }
