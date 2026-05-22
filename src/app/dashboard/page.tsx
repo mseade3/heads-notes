@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { AudioUploadForm } from "@/components/AudioUploadForm";
 import { BrandMark } from "@/components/BrandMark";
+import { MarkdownNoteViewer } from "@/components/MarkdownNoteViewer";
 import { MeetingCard } from "@/components/MeetingCard";
 import { Preloader } from "@/components/Preloader";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -494,10 +495,7 @@ export default function DashboardPage() {
                         Meeting Date {selectedMeeting.meeting_date}
                       </p>
                     </header>
-                    <div
-                      className="prose max-w-none pt-4 text-[#d5d9e3]"
-                      dangerouslySetInnerHTML={{ __html: selectedMeeting.content }}
-                    />
+                    <MarkdownNoteViewer content={selectedMeeting.content} className="pt-4" />
                   </article>
                 ) : (
                   <div className="flex min-h-[260px] items-center justify-center text-center text-sm text-[#b5b9c5]">

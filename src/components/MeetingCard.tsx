@@ -17,6 +17,19 @@ const stripHtml = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const stripMarkdown = (value: string) =>
+  value
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/`(.*?)`/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/---+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const estimateDurationMinutes = (meeting: MeetingNote) => {
   const sourceText = meeting.raw_transcript?.trim() || stripHtml(meeting.content);
   const words = sourceText ? sourceText.split(/\s+/).length : 0;
@@ -46,6 +59,7 @@ export function MeetingCard({
   const handleExport = (format: "txt" | "docx" | "pdf") => {
     window.open(`/api/meetings/${meeting.id}/export?format=${format}`, "_blank");
   };
+  const previewText = stripMarkdown(stripHtml(meeting.content));
 
   return (
     <article
@@ -81,10 +95,9 @@ export function MeetingCard({
           </span>
         </div>
 
-        <div
-          className="line-clamp-3 text-sm leading-relaxed text-[#acb2be]"
-          dangerouslySetInnerHTML={{ __html: meeting.content }}
-        />
+        <p className="line-clamp-3 text-sm leading-relaxed text-[#acb2be]">
+          {previewText}
+        </p>
       </button>
 
       <div className="mt-5 flex flex-wrap gap-2">

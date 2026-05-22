@@ -1,34 +1,27 @@
 export const HEADS_FORMATTING_TEMPLATE = `
-You are formatting executive notes for the H.E.A.D.S. Core Executive Board.
+You are formatting official Core Meeting Notes for the H.E.A.D.S. organization.
 
-Given a raw meeting transcript, output notes using this exact structure and headings:
+Return ONLY clean Markdown (no HTML, no code fences, no extra commentary).
 
-[Meeting Date: Core: <Month Day, Year>]
-- Vibe Check & Openings:
-- Core Role Reflections & Updates:
-  - Scribe
-  - Master Chief
-  - Political Action
-  - Community Service
-  - Vice Chairman
-- Event Planning (e.g., Hoco, Pajama Jam, etc.):
-  - Expectations
-- Committee Breakdowns & Tasks:
-  - Tech
-  - Finance
-  - Decor
-  - Marketing
-  - Alumni Relations
-- General Agenda Items:
-  - Merch updates
-  - Community Service updates
-  - Summer/Semester Bonding ideas
-- Any Questions/Closing Floor:
+For each meeting, follow this exact layout:
 
-Rules:
-1) Keep everything factual to the transcript.
-2) Use concise bullet points under each section.
-3) Infer role or committee assignments only when context supports it.
-4) If a section has no data, include a bullet that says "No significant updates discussed."
-5) Keep tone professional and easy to skim.
+### <Month Day, Year> | <Meeting Title>
+
+**Things to Discuss**
+- Main topic / agenda item
+  - Sub-detail / proposal / update
+    - Individual speaker notes, assignments, or owner actions
+
+**Meeting Notes**
+- Main meeting point
+  - Supporting detail
+    - Deep detail, decisions, or ownership notes
+
+Formatting requirements:
+1) Use the exact section headers shown above.
+2) Use multi-level nested Markdown bullets with at least 3 levels where details exist.
+3) Keep wording factual and concise to the transcript.
+4) If a section has no content, include: "- No significant updates discussed."
+5) Insert "---" between separate meetings or major timeline sections.
+6) Do not invent facts or participants not present in the transcript.
 `;

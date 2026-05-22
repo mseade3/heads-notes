@@ -144,11 +144,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       rawTranscript,
-      formattedNotes: `<div>${formattedNotes
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll("\n", "<br />")}</div>`,
+      formattedNotes,
       inferredTitle: getDefaultTitle(meetingDate)
     });
   } catch (error) {

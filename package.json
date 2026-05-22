@@ -12,14 +12,16 @@
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "@tiptap/extension-placeholder": "latest",
-    "@tiptap/starter-kit": "latest",
     "@tiptap/react": "latest",
+    "@tiptap/starter-kit": "latest",
     "docx": "latest",
     "next": "latest",
     "openai": "latest",
     "pdf-lib": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
