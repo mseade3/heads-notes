@@ -22,6 +22,11 @@ type ChunkTranscriptionResult = {
   text: string;
 };
 
+type AudioChunk = {
+  index: number;
+  file: File;
+};
+
 type AudioUploadFormProps = {
   meetingDate: string;
   onSuccess: (result: UploadResult) => Promise<void> | void;
@@ -43,7 +48,11 @@ const sleep = (ms: number) =>
 
 const CLIENT_DIRECT_UPLOAD_LIMIT_BYTES = 3 * 1024 * 1024;
 const CLIENT_CHUNK_SECONDS = 60;
+const CLIENT_CHUNK_OVERLAP_SECONDS = 3;
 const MAX_CHUNK_UPLOAD_BYTES = 3 * 1024 * 1024;
+const CLIENT_MAX_CHUNK_CONCURRENCY = 5;
+const CLIENT_CHUNK_MAX_RETRIES = 3;
+const CLIENT_RETRY_BASE_DELAY_MS = 500;
 
 const getUploadErrorMessage = async (response: Response) => {
   const contentType = response.headers.get("content-type") ?? "";
@@ -130,10 +139,13 @@ const createClientAudioChunks = async (inputFile: File) => {
 
     const monoSamples = rendered.getChannelData(0);
     const samplesPerChunk = targetSampleRate * CLIENT_CHUNK_SECONDS;
-    const chunks: File[] = [];
+    const overlapSamples = targetSampleRate * CLIENT_CHUNK_OVERLAP_SECONDS;
+    const chunks: AudioChunk[] = [];
 
-    for (let start = 0; start < monoSamples.length; start += samplesPerChunk) {
-      const end = Math.min(start + samplesPerChunk, monoSamples.length);
+    for (let baseStart = 0; baseStart < monoSamples.length; baseStart += samplesPerChunk) {
+      const baseEnd = Math.min(baseStart + samplesPerChunk, monoSamples.length);
+      const start = Math.max(0, baseStart - overlapSamples);
+      const end = Math.min(monoSamples.length, baseEnd + overlapSamples);
       const segment = monoSamples.slice(start, end);
       const wavBlob = encodeMonoWav(segment, targetSampleRate);
       const chunkFile = new File(
@@ -151,7 +163,10 @@ const createClientAudioChunks = async (inputFile: File) => {
         );
       }
 
-      chunks.push(chunkFile);
+      chunks.push({
+        index: chunks.length,
+        file: chunkFile
+      });
     }
 
     if (chunks.length === 0) {
@@ -162,6 +177,129 @@ const createClientAudioChunks = async (inputFile: File) => {
   } finally {
     await context.close();
   }
+};
+
+const shouldRetryChunkStatus = (status: number) => status === 429 || status >= 500;
+
+const getClientChunkConcurrency = (chunkCount: number) => {
+  if (chunkCount <= 1) return 1;
+
+  const hardwareConcurrency =
+    typeof navigator !== "undefined" && typeof navigator.hardwareConcurrency === "number"
+      ? navigator.hardwareConcurrency
+      : 4;
+
+  const connectionType =
+    typeof navigator !== "undefined" &&
+    "connection" in navigator &&
+    (
+      navigator as Navigator & {
+        connection?: { effectiveType?: string };
+      }
+    ).connection?.effectiveType
+      ? (
+          navigator as Navigator & {
+            connection?: { effectiveType?: string };
+          }
+        ).connection?.effectiveType
+      : "";
+
+  let baseline = 4;
+  if (hardwareConcurrency <= 2) baseline = 2;
+  else if (hardwareConcurrency <= 4) baseline = 3;
+
+  if (connectionType === "slow-2g" || connectionType === "2g") {
+    baseline = Math.min(baseline, 2);
+  } else if (connectionType === "3g") {
+    baseline = Math.min(baseline, 3);
+  }
+
+  return Math.min(chunkCount, CLIENT_MAX_CHUNK_CONCURRENCY, Math.max(1, baseline));
+};
+
+const getWords = (value: string) => value.trim().split(/\s+/).filter(Boolean);
+
+const mergeWithOverlapDedup = (previousText: string, currentText: string) => {
+  if (!previousText) return currentText;
+  if (!currentText) return "";
+
+  const previousWords = getWords(previousText);
+  const currentWords = getWords(currentText);
+  const maxLookback = Math.min(40, previousWords.length, currentWords.length);
+
+  let overlapWordCount = 0;
+  for (let length = maxLookback; length >= 6; length -= 1) {
+    const previousSlice = previousWords
+      .slice(previousWords.length - length)
+      .join(" ")
+      .toLowerCase();
+    const currentSlice = currentWords.slice(0, length).join(" ").toLowerCase();
+    if (previousSlice === currentSlice) {
+      overlapWordCount = length;
+      break;
+    }
+  }
+
+  if (!overlapWordCount) return currentText;
+  return currentWords.slice(overlapWordCount).join(" ");
+};
+
+const transcribeChunkWithRetry = async (chunk: AudioChunk) => {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= CLIENT_CHUNK_MAX_RETRIES; attempt += 1) {
+    const chunkPayload = new FormData();
+    chunkPayload.append("audio", chunk.file);
+
+    try {
+      const chunkResponse = await fetch("/api/meetings/transcribe-chunk", {
+        method: "POST",
+        body: chunkPayload
+      });
+
+      if (!chunkResponse.ok) {
+        const message = await getUploadErrorMessage(chunkResponse);
+        if (attempt < CLIENT_CHUNK_MAX_RETRIES && shouldRetryChunkStatus(chunkResponse.status)) {
+          await sleep(CLIENT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+          continue;
+        }
+        throw new Error(message);
+      }
+
+      const chunkBody = (await chunkResponse.json()) as ChunkTranscriptionResult;
+      return chunkBody.text?.trim() ?? "";
+    } catch (error) {
+      lastError = error;
+      if (attempt >= CLIENT_CHUNK_MAX_RETRIES) break;
+      await sleep(CLIENT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Unable to transcribe chunk ${chunk.index + 1}.`);
+};
+
+const transcribeChunksInParallel = async (chunks: AudioChunk[]) => {
+  const results = new Array<string>(chunks.length).fill("");
+  let cursor = 0;
+  const targetConcurrency = getClientChunkConcurrency(chunks.length);
+
+  const worker = async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= chunks.length) return;
+      results[index] = await transcribeChunkWithRetry(chunks[index]);
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(targetConcurrency, chunks.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
+  return results;
 };
 
 export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps) {
@@ -194,28 +332,17 @@ export function AudioUploadForm({ meetingDate, onSuccess }: AudioUploadFormProps
       if (audioFile.size > CLIENT_DIRECT_UPLOAD_LIMIT_BYTES) {
         setProcessingStage("uploading");
         const chunks = await createClientAudioChunks(audioFile);
-        const chunkTranscripts: string[] = [];
+        setProcessingStage("transcribing");
+        const chunkTranscripts = await transcribeChunksInParallel(chunks);
+        const stitchedTranscript = chunkTranscripts.reduce((combined, nextChunkText) => {
+          const nextText = combined
+            ? mergeWithOverlapDedup(combined, nextChunkText)
+            : nextChunkText;
+          if (!nextText) return combined;
+          return `${combined} ${nextText}`.trim();
+        }, "");
 
-        for (const chunk of chunks) {
-          const chunkPayload = new FormData();
-          chunkPayload.append("audio", chunk);
-          setProcessingStage("transcribing");
-          const chunkResponse = await fetch("/api/meetings/transcribe-chunk", {
-            method: "POST",
-            body: chunkPayload
-          });
-
-          if (!chunkResponse.ok) {
-            throw new Error(await getUploadErrorMessage(chunkResponse));
-          }
-
-          const chunkBody = (await chunkResponse.json()) as ChunkTranscriptionResult;
-          if (chunkBody.text?.trim()) {
-            chunkTranscripts.push(chunkBody.text.trim());
-          }
-        }
-
-        const finalTranscript = chunkTranscripts.join(" ").replace(/\s+/g, " ").trim();
+        const finalTranscript = stitchedTranscript.replace(/\s+/g, " ").trim();
         if (!finalTranscript) {
           throw new Error("No transcript text was generated from the uploaded audio.");
         }
