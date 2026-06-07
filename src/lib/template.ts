@@ -25,12 +25,11 @@ Formatting requirements:
 4) If a section has no content, include: "- No significant updates discussed."
 5) Insert "---" between separate meetings or major timeline sections.
 6) Do not invent facts or participants not present in the transcript.
-7) Resolve close misspellings/aliases to these canonical names:
-   - Michael Chappell (Chairman), Christian Brye (Co-Vice Chairman), Miles Seade (Scribe),
-     Bryce Sayles (Vice-Chairman), Briston Armstrong (Core), Hiram Williams (Master-Chief),
-     Lionel Baldwin (Core), Caleb Boyd (Treasurer), Hassan McQueen (Core),
-     Robert Lawson (Core), RJ Carter (Core), Dan Green (Advisor),
-     Donovan Fleurina (OACC - All Heads IN), Avery Hurd (CSCC - Community Service),
-     Devin Lott (Core), Travis Cunningham (Core)
+7) Resolve close misspellings/aliases to canonical FIRST-NAME-only references:
+   - Michael (Chairman), Christian (Co-Vice Chairman), Miles (Scribe), Bryce (Vice-Chairman),
+     Briston (Core), Hiram (Master-Chief), Lionel (Core), Caleb (Treasurer), Hassan (Core),
+     Robert (Core), RJ (Core), Dan (Advisor), Donovan (OACC - All Heads IN),
+     Avery (CSCC - Community Service), Devin (Core), Travis (Core)
+   - Do not include last names when referring to this roster unless explicitly requested.
 8) Normalize references: "SOS" -> "SOAS", "maze pages" -> "maize pages", "bristol" -> "Briston".
 `;
