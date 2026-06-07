@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveStage, setSaveStage] = useState<"idle" | "reformatting" | "saving">("idle");
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [notes, setNotes] = useState<MeetingNote[]>([]);
   const [draft, setDraft] = useState<DraftState | null>(null);
@@ -123,6 +124,7 @@ export default function DashboardPage() {
   const upsertNote = async (status: MeetingStatus) => {
     if (!draft || !supabase) return;
     setSaving(true);
+    setSaveStage("reformatting");
     setError(null);
 
     try {
@@ -134,10 +136,37 @@ export default function DashboardPage() {
         throw new Error("Your session expired. Please sign in again.");
       }
 
+      const reformatResponse = await fetch("/api/meetings/reformat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          meetingDate,
+          content: draft.content
+        })
+      });
+
+      if (!reformatResponse.ok) {
+        const body = (await reformatResponse.json()) as { error?: string };
+        throw new Error(body.error ?? "Unable to reformat draft content.");
+      }
+
+      const reformatResult = (await reformatResponse.json()) as {
+        formattedNotes?: string;
+      };
+      const safeFormattedContent = reformatResult.formattedNotes?.trim();
+
+      if (!safeFormattedContent) {
+        throw new Error("Unable to reformat draft content.");
+      }
+
+      setSaveStage("saving");
+
       const payload = {
         meeting_date: meetingDate,
         title: draft.title || formatDateForTitle(meetingDate),
-        content: draft.content,
+        content: safeFormattedContent,
         raw_transcript: draft.rawTranscript,
         created_by: session.user.id,
         status
@@ -156,6 +185,14 @@ export default function DashboardPage() {
       }
 
       await fetchNotes();
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              content: safeFormattedContent
+            }
+          : current
+      );
       setDraft(null);
       setDraftFontFamily("Times New Roman");
       setActiveTab(status);
@@ -165,6 +202,7 @@ export default function DashboardPage() {
       );
     } finally {
       setSaving(false);
+      setSaveStage("idle");
     }
   };
 
@@ -355,14 +393,22 @@ export default function DashboardPage() {
                       disabled={saving}
                       className="heads-outline-btn rounded-xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {saving ? "Saving..." : "Save Draft"}
+                      {saving
+                        ? saveStage === "reformatting"
+                          ? "Reformatting..."
+                          : "Saving..."
+                        : "Save Draft"}
                     </button>
                     <button
                       onClick={() => upsertNote("published")}
                       disabled={saving}
                       className="heads-gold-btn rounded-xl px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {saving ? "Publishing..." : "Approve & Publish"}
+                      {saving
+                        ? saveStage === "reformatting"
+                          ? "Reformatting..."
+                          : "Publishing..."
+                        : "Approve & Publish"}
                     </button>
                     <button
                       onClick={() => setDraft(null)}

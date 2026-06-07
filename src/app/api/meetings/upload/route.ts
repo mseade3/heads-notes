@@ -7,6 +7,7 @@ import {
 } from "@/lib/audioChunks";
 import { requireCoreUser } from "@/lib/coreAuth";
 import { HEADS_FORMATTING_TEMPLATE } from "@/lib/template";
+import { normalizeHeadsVocabulary } from "@/lib/nameNormalization";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -111,6 +112,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    rawTranscript = normalizeHeadsVocabulary(rawTranscript);
+
     if (!rawTranscript) {
       return NextResponse.json(
         { error: "No transcript text was generated from the audio file." },
@@ -133,7 +136,9 @@ export async function POST(request: NextRequest) {
       ]
     });
 
-    const formattedNotes = completion.choices[0]?.message?.content?.trim();
+    const formattedNotes = normalizeHeadsVocabulary(
+      completion.choices[0]?.message?.content?.trim() ?? ""
+    );
 
     if (!formattedNotes) {
       return NextResponse.json(
