@@ -1,0 +1,32 @@
+---
+description: Enforce official Core Meeting Notes structure in chat generations
+alwaysApply: true
+---
+
+# Core Meeting Notes Formatting Rule
+
+Whenever I ask you to generate, format, or clean up meeting notes, strictly follow this layout.
+
+## Required Meeting Block Format
+
+```md
+### [Date] | [Meeting Title]
+
+**Things to Discuss**
+- [Level 1 topic]
+  - [Level 2 detail]
+    - [Level 3 speaker note / assignment]
+
+**Meeting Notes**
+- [Level 1 summary point]
+  - [Level 2 supporting detail]
+    - [Level 3 ownership / next action]
+```
+
+## Hard Requirements
+
+- Use the exact section headers: `**Things to Discuss**` and `**Meeting Notes**`.
+- Use a minimum of 3 nested bullet levels when detail exists.
+- Keep content factual, concise, and transcript-grounded.
+- Separate distinct meetings/major sections with `---`.
+- Preserve clean markdown output only (no HTML unless explicitly requested).
