@@ -1,0 +1,8 @@
+{
+  "id": "neg-broken-note",
+  "title": "Negative control — broken template",
+  "meetingDate": "2026-01-01",
+  "requiredFacts": [],
+  "expectLowCompleteness": true,
+  "notes": "Negative control. Must score poorly on section completeness."
+}

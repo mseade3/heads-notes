@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-09-15T21:36:07.981Z",
+  "mode": "offline",
+  "holdoutSize": 3,
+  "metrics": {
+    "goldSectionCompletenessMean": 1,
+    "goldTemplatePrecisionMean": 1,
+    "goldTemplateRecallMean": 1,
+    "goldTemplateF1Mean": 1,
+    "goldFactRecallMean": 1,
+    "negativeControlCompletenessMean": 0.1111,
+    "normalizationAccuracy": 1,
+    "stubWerAfterNormalizationMean": 0.1287,
+    "stubWerRawMean": 0.297
+  },
+  "gold": [
+    {
+      "id": "001-soas-workshop",
+      "sectionCompleteness": 1,
+      "templatePrecision": 1,
+      "templateRecall": 1,
+      "templateF1": 1,
+      "factRecall": 1,
+      "failedChecks": [],
+      "missedFacts": []
+    },
+    {
+      "id": "002-spring-mixer",
+      "sectionCompleteness": 1,
+      "templatePrecision": 1,
+      "templateRecall": 1,
+      "templateF1": 1,
+      "factRecall": 1,
+      "failedChecks": [],
+      "missedFacts": []
+    },
+    {
+      "id": "003-retreat-budget",
+      "sectionCompleteness": 1,
+      "templatePrecision": 1,
+      "templateRecall": 1,
+      "templateF1": 1,
+      "factRecall": 1,
+      "failedChecks": [],
+      "missedFacts": []
+    }
+  ],
+  "negativeControls": [
+    {
+      "id": "neg-broken-note",
+      "sectionCompleteness": 0.1111,
+      "templateF1": 0.2,
+      "passedChecks": [
+        "no_code_fences"
+      ],
+      "failedChecks": [
+        "title_heading",
+        "things_to_discuss_header",
+        "meeting_notes_header",
+        "things_bullets",
+        "notes_bullets",
+        "nested_depth_2",
+        "nested_depth_3",
+        "no_html"
+      ]
+    }
+  ],
+  "normalization": {
+    "accuracy": 1,
+    "passed": 10,
+    "total": 10,
+    "failures": []
+  },
+  "stubWer": {
+    "afterNormalization": [
+      {
+        "id": "002-spring-mixer",
+        "wer": 0.1287,
+        "substitutions": 2,
+        "deletions": 0,
+        "insertions": 11,
+        "referenceTokens": 101
+      }
+    ],
+    "raw": [
+      {
+        "id": "002-spring-mixer",
+        "wer": 0.297,
+        "substitutions": 7,
+        "deletions": 0,
+        "insertions": 23,
+        "referenceTokens": 101
+      }
+    ]
+  },
+  "live": null,
+  "privacy": {
+    "fixturesAreSynthetic": true,
+    "privateMeetingContentExcluded": true,
+    "fixtureRoot": "eval/fixtures/"
+  }
+}

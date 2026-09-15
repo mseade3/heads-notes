@@ -1,0 +1,28 @@
+{
+  "id": "002-spring-mixer",
+  "title": "Core Sync — Spring Mixer Planning",
+  "meetingDate": "2026-04-03",
+  "requiredFacts": [
+    "two rooms",
+    "Briston",
+    "maize pages",
+    "SOAS",
+    "Bryce",
+    "Hassan",
+    "Avery",
+    "Devin",
+    "Travis",
+    "Robert",
+    "RJ",
+    "Lionel",
+    "Donovan",
+    "Miles",
+    "Dan",
+    "forty-five"
+  ],
+  "asr": {
+    "hypothesisFile": "transcript_noisy.txt",
+    "referenceFile": "transcript_clean.txt"
+  },
+  "notes": "Synthetic ASR-noise fixture for stub WER and alias normalization."
+}

@@ -5,3 +5,14 @@ node_modules
 *.log
 dist
 coverage
+
+# Private meeting content — never commit real notes/audio
+meetings/
+recordings/
+private/
+*.mp3
+*.wav
+*.m4a
+*.webm
+eval/live-outputs/
+*.tsbuildinfo

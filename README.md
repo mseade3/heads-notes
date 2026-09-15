@@ -1,105 +1,158 @@
 # H.E.A.D.S. Core Notes Platform
 
-Private Next.js app for authenticated H.E.A.D.S. Core members to:
+Next.js app that turns Core meeting audio into structured board notes:
 
-- Upload meeting audio
-- Auto-transcribe with OpenAI Whisper
-- Auto-format with GPT into your official template
-- Review in a rich text editor
-- Save drafts and publish final notes to a private dashboard
-- Export notes as TXT, DOCX, or PDF
+1. Authenticated upload (Supabase allowlist)
+2. Whisper transcription (with ffmpeg chunking for large files)
+3. GPT formatting into the official Core Markdown template
+4. TipTap review → draft / publish → TXT / DOCX / PDF export
+
+This repository is useful as an **applied speech + LLM pipeline** demo. Offline evaluation under `eval/` reports section-completeness, template-adherence precision/recall, vocabulary-normalization accuracy, and stub WER on **synthetic fixtures only** (no private meetings in git).
+
+## Architecture
+
+```text
+┌────────────┐   multipart audio    ┌──────────────────────────┐
+│  Dashboard │ ───────────────────► │ POST /api/meetings/upload│
+│  (TipTap)  │                      └────────────┬─────────────┘
+└─────▲──────┘                                   │
+      │                                          ▼
+      │                              ┌───────────────────────┐
+      │                              │ Size ≤ 25MB?          │
+      │                              └───────────┬───────────┘
+      │                     yes ─────────────────┴─────────── no
+      │                      │                                 │
+      │                      ▼                                 ▼
+      │              Whisper (single)              ffmpeg compress
+      │                                              + 15-min chunks
+      │                                              + parallel Whisper
+      │                      │                                 │
+      │                      └──────────────┬──────────────────┘
+      │                                     ▼
+      │                      normalizeHeadsVocabulary()
+      │                                     │
+      │                                     ▼
+      │                      GPT-4.1 + HEADS template
+      │                                     │
+      │                                     ▼
+      │                      normalizeHeadsVocabulary()
+      │                                     │
+      │                     formatted Markdown + raw transcript
+      │                                     │
+      └──────── review / reformat / save ───┘
+                                         │
+                                         ▼
+                              Supabase `meeting_notes`
+                                         │
+                                         ▼
+                         GET .../export?format=txt|docx|pdf
+```
+
+Offline eval path (no secrets required):
+
+```text
+eval/fixtures/*  →  src/lib/evalMetrics.ts  →  npm run eval  →  eval/results.json
+```
 
 ## Stack
 
-- Next.js (App Router) + TypeScript
-- Tailwind CSS
-- Supabase Auth + Postgres
-- OpenAI API (`whisper-1` + `gpt-4.1`)
-- TipTap editor
+| Layer | Choice |
+|-------|--------|
+| App | Next.js (App Router) + TypeScript |
+| UI | Tailwind CSS + TipTap |
+| Auth / DB | Supabase Auth + Postgres |
+| Speech | OpenAI `whisper-1` (+ local `ffmpeg` for >25MB) |
+| Notes LLM | OpenAI `gpt-4.1` |
+| Export | `docx`, `pdf-lib` |
+| Eval | Pure TypeScript metrics + synthetic holdout fixtures |
 
-## 1) Environment setup
+## Evaluation (DS signal)
 
-Copy `.env.example` to `.env.local` and set:
+Private Core recordings stay out of git. The public holdout set lives in `eval/fixtures/` and is fully synthetic.
+
+| Metric | What it measures | Offline result (committed) |
+|--------|------------------|----------------------------|
+| **Section completeness** | Required headers, bullets, ≥3 nesting levels, no HTML/fences | **100%** mean on gold fixtures |
+| **Template-adherence P/R/F1** | Precision/recall over structural labels vs the official template checklist | **P=1.00 / R=1.00 / F1=1.00** on gold |
+| **Fact-phrase recall** | Required roster/topic phrases from `meta.json` appear in notes | **100%** mean on gold |
+| **Negative-control completeness** | Broken notes must score low (scorer sanity check) | **11.1%** (fails loud) |
+| **Vocabulary normalization accuracy** | ASR aliases → canonical first names / SOAS / maize pages | **100%** (10/10 cases) |
+| **Stub WER** | Token WER of noisy ASR text vs clean reference, before/after normalization | **29.7% → 12.9%** on fixture `002` |
+
+Re-run locally (no API key):
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-OPENAI_API_KEY=...
-ALLOWED_CORE_EMAILS=alice@school.edu,bob@school.edu
-ALLOWED_EMAIL_DOMAIN=school.edu
+npm run eval
 ```
 
-## 2) Database setup (Supabase SQL editor)
-
-Run `supabase-schema.sql`.
-
-## 3) Install and run
+Optional live GPT formatting score (needs `OPENAI_API_KEY`, spends tokens):
 
 ```bash
+npm run eval:live
+```
+
+Interpretation:
+
+- Offline metrics validate the **scorer**, **gold template**, and **deterministic normalization** layer.
+- `--live` scores the actual GPT formatter on the same holdout transcripts (section completeness / template F1 / fact recall).
+- Stub WER is text-level (noisy transcript vs clean transcript), not Whisper-on-audio WER. It shows residual ASR-style error after production alias cleanup.
+
+Latest machine-readable summary: [`eval/results.json`](./eval/results.json).
+
+## Run locally (no secrets in git)
+
+```bash
+cp .env.example .env.local
+# fill Supabase + OpenAI values locally
 npm install
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
+Required env vars (see `.env.example`):
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `OPENAI_API_KEY`
+- optional `ALLOWED_CORE_EMAILS` / `ALLOWED_EMAIL_DOMAIN`
+
+Database: run `supabase-schema.sql` in the Supabase SQL editor.
+
+Large audio (>25MB): install `ffmpeg` on PATH so the server can compress/chunk before Whisper.
+
 ## Auth flow
 
-- Users log in at `/login` with Supabase email/password accounts.
-- `proxy.ts` protects `/dashboard`.
-- API routes enforce authentication/authorization server-side.
-- Optional allowlist controls:
-  - `ALLOWED_CORE_EMAILS` for specific users
-  - `ALLOWED_EMAIL_DOMAIN` for a shared domain
+- `/login` — Supabase email/password
+- `proxy.ts` protects `/dashboard`
+- API routes re-check auth + allowlists server-side
 
 ## Upload + AI pipeline
 
 `POST /api/meetings/upload`
 
-1. Accepts audio file (`.mp3`, `.wav`, `.m4a`) via form-data
-2. Transcribes with Whisper
-3. Formats transcript using GPT with your H.E.A.D.S. template
+1. Accepts `.mp3` / `.wav` / `.m4a` (or a precomputed transcript)
+2. Transcribes with Whisper (chunked if needed)
+3. Formats with GPT using `src/lib/template.ts`
 4. Returns formatted notes + raw transcript for review
 
-### Large file handling (>25MB)
+## Draft / publish / export
 
-- OpenAI Whisper has a ~25MB upload limit per transcription request.
-- This app automatically handles larger files by:
-  1. Compressing audio to low-bitrate MP3
-  2. Splitting into 15-minute chunks
-  3. Transcribing each chunk and merging transcripts
-- Server requirement: `ffmpeg` must be installed and available on PATH.
+- **Save Draft** keeps notes private for later edits
+- **Publish Notes** marks them ready for Core distribution
+- `GET /api/meetings/[id]/export?format=txt|docx|pdf`
 
-## Draft and publishing flow
+## Privacy
 
-- Generated content opens in an editor first.
-- Choose **Save Draft** to keep it private for later edits.
-- Choose **Publish Notes** when ready for Core distribution.
+- Do **not** commit real meeting audio or notes
+- `.gitignore` blocks `meetings/`, `recordings/`, `private/`, and common audio extensions
+- Public eval fixtures are labeled synthetic under `eval/fixtures/`
 
-## Export endpoint
+## Deploy
 
-`GET /api/meetings/[id]/export?format=txt|docx|pdf`
+1. Push to GitHub
+2. Import into Vercel
+3. Set the same env vars from `.env.local`
+4. Deploy
 
-- Exports one note in the selected format.
-- Uses the same auth and allowlist protections as the dashboard.
-
-## Notes
-
-- The dashboard currently expects a `meeting_notes` table and authenticated users.
-- You can tighten access further by allowing only specific domains/emails in Supabase Auth settings.
-
-## Deploy with a private URL
-
-The easiest way to get a normal website link is Vercel.
-
-1. Push this project to a private GitHub repo.
-2. Import the repo into Vercel.
-3. Add the same environment variables from `.env.local` in Vercel Project Settings.
-4. Deploy.
-5. Use your Vercel URL (for example `https://heads-notes.vercel.app`) in any browser/search bar.
-
-To keep it private:
-
-- Keep `ALLOWED_CORE_EMAILS` limited to your own email, or
-- Set `ALLOWED_EMAIL_DOMAIN` to your own private domain.
-
-Users who are not on your allowlist cannot access protected routes or API actions.
+Keep the app private by limiting `ALLOWED_CORE_EMAILS` / `ALLOWED_EMAIL_DOMAIN`.
